@@ -8,6 +8,7 @@ use App\Models\MetaServer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class MetaServerController extends Controller
@@ -198,43 +199,46 @@ class MetaServerController extends Controller
         }
     }
 
-
     public function getMastersWithSlaves()
     {
-        try {
-            // Get the authenticated user's ID
-            //$userId = Auth::id();
+        Log::info('getMastersWithSlaves called', [
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent()
+        ]);
 
-            // Find the MetaServer entry where manager_id matches the authenticated user ID
+        try {
+            // Get MetaServer entry (for now, hardcoded id=1)
             $metaServer = MetaServer::where('id', 1)->first();
 
-            // If no entry is found, return an error response
             if (!$metaServer) {
+                Log::warning('No MetaServer found with id 1');
                 return response()->json([
                     'success' => false,
                     'message' => 'No server found for the authenticated user.',
                 ], 404);
             }
 
-            // Fetch masters where server_id matches the fetched MetaServer ID, with their slaves
+            Log::info('MetaServer found', ['meta_server_id' => $metaServer->id]);
+
+            // Fetch masters with their slaves
             $masters = Master::where('server_id', $metaServer->id)
                 ->with(['slaves' => function ($query) {
                     $query->where('status', true)->where('is_live', true)
                         ->select(
                             'id', 'sl_mt5_id', 'master_id', 'is_config_unique',
                             'risk_approach', 'lot_size', 'multiplier',
-                            'fixed_balance', 'copy_sl', 'copy_tp','commission_percentage','commission_type',
+                            'fixed_balance', 'copy_sl', 'copy_tp', 'commission_percentage', 'commission_type',
                             'is_reverse', 'status', 'is_live'
                         );
                 }])
                 ->select('id', 'mc_name', 'mc_mt5_id')
                 ->get();
 
-            // Initialize an array to hold the final data structure
+            Log::info('Fetched masters', ['count' => $masters->count()]);
+
             $mastersWithSlaves = [];
 
             foreach ($masters as $master) {
-                // Only include masters that have slaves meeting the conditions
                 if ($master->slaves->isNotEmpty()) {
                     $mastersWithSlaves[] = [
                         'id' => $master->id,
@@ -245,31 +249,39 @@ class MetaServerController extends Controller
                 }
             }
 
+            Log::info('Filtered masters with slaves', ['count' => count($mastersWithSlaves)]);
 
-            // Check if any entries exist in GroupCopier table
             $groupCopiers = GroupCopier::all();
+            Log::info('Fetched group copiers', ['count' => $groupCopiers->count()]);
 
-            // Initialize the response structure
             $response = [
                 'success' => true,
                 'data' => $mastersWithSlaves,
             ];
 
-            // If there are entries in GroupCopier, add 'group_data' to the response
             if ($groupCopiers->isNotEmpty()) {
                 $response['group_data'] = $groupCopiers;
             }
 
-            // Update is_synced and last_synced in the MetaServer table
+            // Update sync status
             $metaServer->is_synced = true;
-            $metaServer->last_synced = now();  // Set current timestamp
+            $metaServer->last_synced = now();
             $metaServer->save();
 
-            // Return the final response
+            Log::info('MetaServer sync updated', [
+                'meta_server_id' => $metaServer->id,
+                'last_synced' => $metaServer->last_synced
+            ]);
+
             return response()->json($response, 200);
 
         } catch (\Exception $e) {
-            // Handle any unexpected errors
+            Log::error('Error in getMastersWithSlaves', [
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching data.',
