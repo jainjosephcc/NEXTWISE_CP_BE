@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\GroupCopierController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\MetaServerController;
@@ -9,6 +10,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 
 // Public Routes
+
+
+
+Route::get('/health', [HealthController::class, 'index']);           // lightweight
+Route::get('/health/full', [HealthController::class, 'full']);
+
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/plugin/login', [AuthController::class, 'pluginLogin']);
 //Route::post('/register', [AuthController::class, 'register']); // Comment out if registration is not needed
